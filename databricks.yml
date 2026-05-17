@@ -18,7 +18,7 @@ targets:
     mode: development
     default: true
     workspace:
-      host: https://dbc-9f0433b0-3b85.cloud.databricks.com
+      host: https://dbc-705cf5fe-d80f.cloud.databricks.com
     variables:
       catalog: fintech_finpay
       schema: default
@@ -27,12 +27,12 @@ targets:
   prod:
     mode: production
     workspace:
-      host: https://dbc-9f0433b0-3b85.cloud.databricks.com
+      host: https://dbc-705cf5fe-d80f.cloud.databricks.com
       root_path: /Workspace/Users/dmorillo2198@gmail.com/.bundle/${bundle.name}/${bundle.target}
     variables:
       catalog: fintech_finpay
       schema: default
       pause_status: UNPAUSED
     permissions:
-      - user_name: dmorillo2198@gmail.com
+      - user_name: 17100799@ue.edu.pe
         level: CAN_MANAGE
