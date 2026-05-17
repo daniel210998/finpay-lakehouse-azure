@@ -1,0 +1,38 @@
+bundle:
+  name: finpay-lakehouse-azure
+
+include:
+  - resources/*.yml
+
+variables:
+  catalog:
+    description: The catalog to use
+  schema:
+    description: The schema to use
+  pause_status:
+    description: The pause status for jobs
+
+targets:
+
+  dev:
+    mode: development
+    default: true
+    workspace:
+      host: https://dbc-9f0433b0-3b85.cloud.databricks.com
+    variables:
+      catalog: fintech_finpay
+      schema: default
+      pause_status: PAUSED
+
+  prod:
+    mode: production
+    workspace:
+      host: https://dbc-9f0433b0-3b85.cloud.databricks.com
+      root_path: /Workspace/Users/dmorillo2198@gmail.com/.bundle/${bundle.name}/${bundle.target}
+    variables:
+      catalog: fintech_finpay
+      schema: default
+      pause_status: UNPAUSED
+    permissions:
+      - user_name: dmorillo2198@gmail.com
+        level: CAN_MANAGE
