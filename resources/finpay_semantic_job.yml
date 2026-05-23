@@ -1,0 +1,34 @@
+# =============================================================
+# finpay_semantic_job.yml — Job 2: Modelo semántico
+# Refresca las vistas materializadas del modelo dimensional
+# Se ejecuta DESPUÉS de que finpay_ingestion_job termine exitosamente
+# =============================================================
+
+resources:
+  jobs:
+    finpay_semantic_job:
+      name: finpay_semantic_job_${bundle.target}
+
+      tasks:
+        - task_key: refresh_materialized_views
+          notebook_task:
+            notebook_path: ../notebooks/02_refresh_materialized_views.ipynb
+            source: WORKSPACE
+          existing_cluster_id: ""
+          new_cluster:
+            spark_version: 15.4.x-scala2.12
+            node_type_id: i3.xlarge
+            num_workers: 1
+            data_security_mode: SINGLE_USER
+            runtime_engine: STANDARD
+
+      max_concurrent_runs: 1
+
+      email_notifications:
+        on_failure:
+          - 17100799@ue.edu.pe
+
+      schedule:
+        quartz_cron_expression: "0 30 6 * * ?"
+        timezone_id: "America/Lima"
+        pause_status: ${var.pause_status}

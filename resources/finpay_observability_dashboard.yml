@@ -1,0 +1,11 @@
+# =============================================================
+# finpay_observability_dashboard.yml — Dashboard AI/BI
+# Dashboard de observabilidad consumiendo event logs
+# =============================================================
+
+resources:
+  dashboards:
+    finpay_observability_dashboard:
+      display_name: "FinPay - Dashboard de Observabilidad"
+      warehouse_id: ${var.warehouse_id}
+      file_path: ../dashboard/observability.lvdash.json

@@ -1,0 +1,36 @@
+resources:
+  pipelines:
+    finpay_etl_pipeline:
+      name: finpay_etl_pipeline_${bundle.target}
+
+      catalog: ${var.catalog}
+      schema: default
+
+      event_log:
+        catalog: ${var.catalog}
+        schema: observability
+
+      libraries:
+        - file:
+            path: ../src/utils.py
+        - file:
+            path: ../src/bronze.py
+        - file:
+            path: ../src/silver.py
+        - file:
+            path: ../src/gold.py
+
+      continuous: false
+
+      clusters:
+        - label: default
+          num_workers: 1
+          spark_conf:
+            spark.databricks.delta.preview.enabled: "true"
+
+      notifications:
+        - email_recipients:
+            - 17100799@ue.edu.pe
+          alerts:
+            - on-update-failure
+            - on-update-fatal-failure
