@@ -13,6 +13,7 @@ resources:
       schema: default
 
       event_log:
+        name: finpay_event_log
         catalog: ${var.catalog}
         schema: observability
 
@@ -28,11 +29,8 @@ resources:
 
       continuous: false
 
-      clusters:
-        - label: default
-          num_workers: 1
-          spark_conf:
-            spark.databricks.delta.preview.enabled: "true"
+      # Serverless compute (requerido en workspace trial)
+      serverless: true
 
       notifications:
         - email_recipients:

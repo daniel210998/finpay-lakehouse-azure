@@ -17,17 +17,13 @@ resources:
           notebook_task:
             notebook_path: /Workspace/Users/17100799@ue.edu.pe/notebooks/02_refresh_materialized_views
             source: WORKSPACE
-          new_cluster:
-            spark_version: 15.4.x-scala2.12
-            node_type_id: i3.xlarge
-            num_workers: 1
-            data_security_mode: SINGLE_USER
-            runtime_engine: STANDARD
 
+      # Alerta solo en fallo
       email_notifications:
         on_failure:
           - 17100799@ue.edu.pe
 
+      # Schedule 30 minutos después del Job 1 (6:30am Lima)
       schedule:
         quartz_cron_expression: "0 30 6 * * ?"
         timezone_id: "America/Lima"
