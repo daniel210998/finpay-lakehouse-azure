@@ -160,7 +160,7 @@ def bronze_transactions():
         .load("/Volumes/fintech_finpay/default/vol_landing/transactions/")
         .withColumn("_source_name", F.lit("transactions"))
         .withColumn("_ingestion_time", F.current_timestamp())
-        .withColumn("_file_path", F.input_file_name())
+        .withColumn("_file_path", F.col("_metadata.file_path"))
     )
 
 
@@ -188,7 +188,7 @@ def bronze_merchants():
         .load("/Volumes/fintech_finpay/default/vol_landing/merchants/")
         .withColumn("_source_name", F.lit("merchants"))
         .withColumn("_ingestion_time", F.current_timestamp())
-        .withColumn("_file_path", F.input_file_name())
+        .withColumn("_file_path", F.col("_metadata.file_path"))
     )
 
 
@@ -218,5 +218,5 @@ def bronze_users():
         .load("/Volumes/fintech_finpay/default/vol_landing/users/")
         .withColumn("_source_name", F.lit("users"))
         .withColumn("_ingestion_time", F.current_timestamp())
-        .withColumn("_file_path", F.input_file_name())
+        .withColumn("_file_path", F.col("_metadata.file_path"))
     )

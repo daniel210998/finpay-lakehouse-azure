@@ -52,7 +52,7 @@ def add_audit_columns(df, source_name: str):
         .withColumn("_ingestion_time", F.current_timestamp())
         .withColumn(
             "_file_path",
-            F.input_file_name()  # ruta real del archivo procesado
+            F.col("_metadata.file_path")  # ruta real del archivo procesado
         )
     )
 

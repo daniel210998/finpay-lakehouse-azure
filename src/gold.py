@@ -184,25 +184,11 @@ def gold_anomalies():
     table_properties={"quality": "gold"}
 )
 def gold_channel_summary():
-    """
-    Agrega métricas por canal de origen para el área de riesgo.
-
-    Canales: web · app · pos
-
-    Métricas:
-        total_transactions : volumen de operaciones por canal
-        total_amount       : monto total procesado
-        tasa_reversa       : indicador de riesgo por canal
-        tasa_aprobacion    : porcentaje de transacciones aprobadas
-        pct_del_total      : participación del canal en el total
-    """
     tx = dlt.read_stream("transactions")
-
-    # ── Total general para calcular porcentajes ───────────────
-    total = tx.agg(F.count("*").alias("grand_total")).collect()[0][0]
 
     return (
         tx
+        .withWatermark("_ingestion_time", "1 hour")
         .groupBy("channel", F.col("transaction_date").alias("fecha"))
         .agg(
             F.count("*").alias("total_transactions"),
@@ -214,26 +200,16 @@ def gold_channel_summary():
             F.sum(
                 F.when(F.col("status") == "aprobado", 1).otherwise(0)
             ).alias("total_aprobadas"),
-            F.countDistinct("merchant_id").alias("merchants_activos"),
-            F.countDistinct("user_id").alias("usuarios_activos"),
+            F.approx_count_distinct("merchant_id").alias("merchants_activos"),
+            F.approx_count_distinct("user_id").alias("usuarios_activos"),
         )
         .withColumn(
             "tasa_reversa",
-            F.round(
-                F.col("total_reversas") / F.col("total_transactions"), 4
-            )
+            F.round(F.col("total_reversas") / F.col("total_transactions"), 4)
         )
         .withColumn(
             "tasa_aprobacion",
-            F.round(
-                F.col("total_aprobadas") / F.col("total_transactions"), 4
-            )
-        )
-        .withColumn(
-            "pct_del_total",
-            F.round(
-                F.col("total_transactions") / F.lit(total) * 100, 2
-            )
+            F.round(F.col("total_aprobadas") / F.col("total_transactions"), 4)
         )
         .select(
             "channel",
@@ -247,6 +223,5 @@ def gold_channel_summary():
             "tasa_aprobacion",
             "merchants_activos",
             "usuarios_activos",
-            "pct_del_total",
         )
     )
