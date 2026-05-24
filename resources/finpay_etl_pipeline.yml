@@ -1,3 +1,9 @@
+# =============================================================
+# finpay_etl_pipeline.yml — Lakeflow Declarative Pipeline
+# Define el pipeline DLT que ejecuta Bronze → Silver → Gold
+# Event logs persistidos en fintech_finpay.observability
+# =============================================================
+
 resources:
   pipelines:
     finpay_etl_pipeline:

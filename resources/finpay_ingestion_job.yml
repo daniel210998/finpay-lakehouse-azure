@@ -1,6 +1,7 @@
 # =============================================================
 # finpay_ingestion_job.yml — Job 1: Pipeline ETL
 # Orquesta la ejecución del pipeline DLT Bronze → Silver → Gold
+# Tiene reintentos y alertas por fallo configurados
 # =============================================================
 
 resources:
@@ -8,17 +9,8 @@ resources:
     finpay_ingestion_job:
       name: finpay_ingestion_job_${bundle.target}
 
-      # Ejecutar el pipeline DLT completo
-      tasks:
-        - task_key: run_etl_pipeline
-          pipeline_task:
-            pipeline_id: ${resources.pipelines.finpay_etl_pipeline.id}
-            full_refresh: false
-
-      # Configuración de reintentos
       max_concurrent_runs: 1
 
-      # Política de reintentos por tarea
       tasks:
         - task_key: run_etl_pipeline
           pipeline_task:
@@ -28,14 +20,12 @@ resources:
           max_retries: 2
           min_retry_interval_millis: 60000
 
-      # Alertas por fallo
       email_notifications:
         on_failure:
           - 17100799@ue.edu.pe
         on_success:
           - 17100799@ue.edu.pe
 
-      # Schedule — pausado en dev, activo en prod
       schedule:
         quartz_cron_expression: "0 0 6 * * ?"
         timezone_id: "America/Lima"

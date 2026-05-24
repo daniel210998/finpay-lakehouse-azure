@@ -1,6 +1,8 @@
 # =============================================================
 # finpay_observability_dashboard.yml — Dashboard AI/BI
 # Dashboard de observabilidad consumiendo event logs
+# Fuente: fintech_finpay.observability
+# Exportado como observability.lvdash.json en dashboard/
 # =============================================================
 
 resources:

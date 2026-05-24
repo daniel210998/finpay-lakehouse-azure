@@ -1,3 +1,8 @@
+# =============================================================
+# databricks.yml — Configuración raíz del Databricks Asset Bundle
+# FinPay Lakehouse · Azure Databricks · Arquitectura Medallion
+# =============================================================
+
 bundle:
   name: finpay-lakehouse-azure
 
@@ -11,6 +16,8 @@ variables:
     description: The schema to use
   pause_status:
     description: The pause status for jobs
+  warehouse_id:
+    description: The SQL Warehouse ID for dashboards
 
 targets:
 
@@ -23,16 +30,18 @@ targets:
       catalog: fintech_finpay
       schema: default
       pause_status: PAUSED
+      warehouse_id: 3aabd4a7cb2f3361
 
   prod:
     mode: production
     workspace:
       host: https://dbc-705cf5fe-d80f.cloud.databricks.com
-      root_path: /Workspace/Users/dmorillo2198@gmail.com/.bundle/${bundle.name}/${bundle.target}
+      root_path: /Workspace/Users/17100799@ue.edu.pe/.bundle/${bundle.name}/${bundle.target}
     variables:
       catalog: fintech_finpay
       schema: default
       pause_status: UNPAUSED
+      warehouse_id: 3aabd4a7cb2f3361
     permissions:
       - user_name: 17100799@ue.edu.pe
         level: CAN_MANAGE
