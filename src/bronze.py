@@ -7,49 +7,74 @@
 import dlt
 from pyspark.sql import functions as F
 from utils import load_archetypes, add_audit_columns
-
+ 
 # -------------------------------------------------------------
 # RUTA AL ARCHIVO DE ARQUETIPOS
 # Se lee una sola vez al inicio del pipeline para orquestar
-# dinámicamente la ingesta de cada fuente.
+# dinámicamente cada ingesta según las propiedades del arquetipo.
 # -------------------------------------------------------------
 ARCHETYPES_PATH = (
     "/Volumes/fintech_finpay/default/vol_landing/metadata/"
     "ingestion_archetypes.json"
 )
-
-
+ 
 # -------------------------------------------------------------
-# FUNCIÓN GENÉRICA DE INGESTA
+# CARGA DE ARQUETIPOS AL INICIO DEL MÓDULO
+# DLT ejecuta esto cuando carga el archivo — antes de crear
+# las tablas. Genera un dict indexado por source_name para
+# acceso rápido desde cada función de tabla.
+# Solo se cargan los arquetipos activos (active: true).
+# -------------------------------------------------------------
+_archetypes = {
+    a["source_name"]: a
+    for a in load_archetypes(spark, ARCHETYPES_PATH)
+}
+ 
+ 
+# -------------------------------------------------------------
+# FUNCIÓN GENÉRICA DE INGESTA (metadata-driven — Reto 1)
 # Lee cualquier fuente según su arquetipo (CSV, JSON, TXT).
-# Agrega columnas técnicas de auditoría y retorna el DataFrame.
+# Todas las propiedades vienen del JSON — ningún valor
+# está hardcodeado en el código.
 # -------------------------------------------------------------
 def ingest_source(spark, archetype: dict):
     """
     Ingesta una fuente de datos según su arquetipo.
-
+ 
+    Propiedades leídas del JSON:
+        file_format      : csv, json, text
+        source_path      : ruta al directorio en vol_landing
+        delimiter        : separador de campos (CSV y TXT)
+        header           : si el archivo tiene cabecera
+        multiline        : si el JSON es multilinea
+        schema_location  : ruta para persistir el schema inferido
+        checkpoint_path  : ruta para el checkpoint de streaming
+ 
     Soporta:
-        - CSV  : con header y delimitador configurables
-        - JSON : con soporte multiline
-        - text : archivos TXT con delimitador pipe (|)
+        - CSV  : transactions (header, delimiter configurable)
+        - JSON : merchants (multiline configurable)
+        - text : users con delimitador pipe (|)
     """
     fmt         = archetype["file_format"]
     path        = archetype["source_path"]
     source_name = archetype["source_name"]
-
+    schema_loc  = archetype.get(
+        "schema_location",
+        f"/Volumes/fintech_finpay/default/vol_landing/metadata/schema/{source_name}/"
+    )
+ 
     if fmt == "csv":
         df = (
             spark.readStream
-            .format("cloudFiles")                          # Auto Loader para streaming incremental
+            .format("cloudFiles")                          # Auto Loader
             .option("cloudFiles.format", "csv")
             .option("header", str(archetype.get("header", True)))
             .option("delimiter", archetype.get("delimiter", ","))
-            .option("inferSchema", "false")                # Bronze lee todo como STRING
-            .option("cloudFiles.schemaLocation",
-                    archetype.get("schema_location", f"{path}_schema"))
+            .option("inferSchema", "false")                # Bronze: todo como STRING
+            .option("cloudFiles.schemaLocation", schema_loc)
             .load(path)
         )
-
+ 
     elif fmt == "json":
         df = (
             spark.readStream
@@ -57,166 +82,78 @@ def ingest_source(spark, archetype: dict):
             .option("cloudFiles.format", "json")
             .option("multiLine", str(archetype.get("multiline", False)))
             .option("inferSchema", "false")
-            .option("cloudFiles.schemaLocation",
-                    archetype.get("schema_location", f"{path}_schema"))
+            .option("cloudFiles.schemaLocation", schema_loc)
             .load(path)
         )
-
+ 
     elif fmt == "text":
-        # Los archivos TXT con pipe se leen primero como texto
-        # y luego se parsean dividiendo por el delimitador
+        # Archivos TXT con delimitador pipe — se leen como CSV con sep=|
         delimiter = archetype.get("delimiter", "|")
         df = (
             spark.readStream
             .format("cloudFiles")
-            .option("cloudFiles.format", "text")
-            .option("cloudFiles.schemaLocation",
-                    archetype.get("schema_location", f"{path}_schema"))
+            .option("cloudFiles.format", "csv")
+            .option("header", str(archetype.get("header", True)))
+            .option("delimiter", delimiter)
+            .option("inferSchema", "false")
+            .option("cloudFiles.schemaLocation", schema_loc)
             .load(path)
         )
-        # Leer cabecera para obtener nombres de columnas
-        header_df = (
-            spark.read
-            .text(path)
-            .limit(1)
-            .collect()
-        )
-        if header_df:
-            columns = header_df[0][0].split(delimiter)
-            # Dividir cada línea por el delimitador y crear columnas
-            split_col = F.split(F.col("value"), r"\|")
-            for i, col_name in enumerate(columns):
-                df = df.withColumn(col_name.strip(), split_col.getItem(i))
-            df = df.drop("value")
-
+ 
     else:
-        raise ValueError(f"Formato no soportado: {fmt}")
-
-    # Agregar columnas técnicas de auditoría
+        raise ValueError(f"Formato no soportado en arquetipo: {fmt}")
+ 
+    # Agregar columnas técnicas de auditoría requeridas en Bronze
     return add_audit_columns(df, source_name)
-
-
-# -------------------------------------------------------------
-# GENERACIÓN DINÁMICA DE TABLAS BRONZE
-# Itera sobre los arquetipos activos y crea una Streaming Table
-# por cada fuente usando el decorador @dlt.table.
-# -------------------------------------------------------------
-def create_bronze_tables(spark):
-    """
-    Crea dinámicamente las Streaming Tables de Bronze
-    basándose en los arquetipos activos del JSON de configuración.
-    """
-    archetypes = load_archetypes(spark, ARCHETYPES_PATH)
-
-    for archetype in archetypes:
-        source_name  = archetype["source_name"]
-        target_table = archetype["target_table"]
-        checkpoint   = archetype.get(
-            "checkpoint_path",
-            f"/Volumes/fintech_finpay/default/vol_landing/metadata/checkpoints/{source_name}/"
-        )
-
-        # Crear la tabla Bronze con decorador DLT
-        @dlt.table(
-            name=target_table.split(".")[-1],           # ej: "transactions"
-            comment=f"Bronze: ingesta raw de {source_name} sin transformación",
-            table_properties={
-                "quality": "bronze",
-                "pipelines.reset.allowed": "true"
-            }
-        )
-        def bronze_table(archetype=archetype):          # closure para capturar el arquetipo
-            return ingest_source(spark, archetype)
-
-
-# -------------------------------------------------------------
-# TABLAS BRONZE EXPLÍCITAS
-# Además de la generación dinámica, se definen explícitamente
-# las tres tablas para mayor claridad y control.
-# -------------------------------------------------------------
-
+ 
+ 
+# =============================================================
+# TABLAS BRONZE — STREAMING TABLES
+# Las propiedades de cada fuente vienen del _archetypes dict
+# cargado desde ingestion_archetypes.json al inicio del módulo.
+# Si se modifica el JSON (ruta, formato, delimiter), el pipeline
+# toma los cambios automáticamente sin tocar el código.
+# =============================================================
+ 
 @dlt.table(
     name="raw_transactions",
-    comment="Bronze: ingesta raw de transactions desde CSV sin transformación",
+    comment="Bronze: ingesta raw de transactions — configuración desde ingestion_archetypes.json",
     table_properties={"quality": "bronze"}
 )
 def bronze_transactions():
     """
-    Lee los archivos transactions_*.csv desde la landing zone.
-    Todos los campos se mantienen como STRING para preservar
-    el dato original. Las transformaciones se hacen en Silver.
+    Lee transactions_*.csv desde la landing zone.
+    Configuración: formato CSV, header=true, delimiter=,
+    Todo se mantiene como STRING — los tipos se castean en Silver.
     """
-    return (
-        spark.readStream
-        .format("cloudFiles")
-        .option("cloudFiles.format", "csv")
-        .option("header", "true")
-        .option("delimiter", ",")
-        .option("inferSchema", "false")           # todo como STRING en Bronze
-        .option(
-            "cloudFiles.schemaLocation",
-            "/Volumes/fintech_finpay/default/vol_landing/metadata/schema/transactions/"
-        )
-        .load("/Volumes/fintech_finpay/default/vol_landing/transactions/")
-        .withColumn("_source_name", F.lit("transactions"))
-        .withColumn("_ingestion_time", F.current_timestamp())
-        .withColumn("_file_path", F.col("_metadata.file_path"))
-    )
-
-
+    return ingest_source(spark, _archetypes["transactions"])
+ 
+ 
 @dlt.table(
     name="raw_merchants",
-    comment="Bronze: ingesta raw de merchants desde JSON sin transformación",
+    comment="Bronze: ingesta raw de merchants — configuración desde ingestion_archetypes.json",
     table_properties={"quality": "bronze"}
 )
 def bronze_merchants():
     """
-    Lee el archivo merchants.json desde la landing zone.
-    Preserva todos los campos extra no documentados en el enunciado
-    (internal_code, legacy_id, region, source_system) para trazabilidad.
+    Lee merchants.json desde la landing zone.
+    Configuración: formato JSON, multiline=true
+    Preserva todos los campos incluyendo los no documentados
+    (internal_code, legacy_id, region, source_system).
     """
-    return (
-        spark.readStream
-        .format("cloudFiles")
-        .option("cloudFiles.format", "json")
-        .option("multiLine", "true")
-        .option("inferSchema", "false")
-        .option(
-            "cloudFiles.schemaLocation",
-            "/Volumes/fintech_finpay/default/vol_landing/metadata/schema/merchants/"
-        )
-        .load("/Volumes/fintech_finpay/default/vol_landing/merchants/")
-        .withColumn("_source_name", F.lit("merchants"))
-        .withColumn("_ingestion_time", F.current_timestamp())
-        .withColumn("_file_path", F.col("_metadata.file_path"))
-    )
-
-
+    return ingest_source(spark, _archetypes["merchants"])
+ 
+ 
 @dlt.table(
     name="raw_users",
-    comment="Bronze: ingesta raw de users desde TXT con delimitador pipe",
+    comment="Bronze: ingesta raw de users — configuración desde ingestion_archetypes.json",
     table_properties={"quality": "bronze"}
 )
 def bronze_users():
     """
-    Lee los archivos users_*.txt desde la landing zone.
-    El delimitador es pipe (|). Se leen como CSV con sep=|.
-    Los campos PII se preservan sin transformación en Bronze;
-    el masking se aplica en Silver a nivel de tabla.
+    Lee users_*.txt desde la landing zone.
+    Configuración: formato text, delimiter=|, header=true
+    Los campos PII se preservan sin transformación en Bronze.
+    El masking se aplica en Silver a nivel de tabla Unity Catalog.
     """
-    return (
-        spark.readStream
-        .format("cloudFiles")
-        .option("cloudFiles.format", "csv")
-        .option("header", "true")
-        .option("delimiter", "|")
-        .option("inferSchema", "false")
-        .option(
-            "cloudFiles.schemaLocation",
-            "/Volumes/fintech_finpay/default/vol_landing/metadata/schema/users/"
-        )
-        .load("/Volumes/fintech_finpay/default/vol_landing/users/")
-        .withColumn("_source_name", F.lit("users"))
-        .withColumn("_ingestion_time", F.current_timestamp())
-        .withColumn("_file_path", F.col("_metadata.file_path"))
-    )
+    return ingest_source(spark, _archetypes["users"])

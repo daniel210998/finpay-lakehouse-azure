@@ -138,7 +138,7 @@ def gold_anomalies():
 
     Solo se reportan comercios con severidad MEDIA, ALTA o CRITICA.
     """
-    kpis = dlt.read_stream("risk_kpis")
+    kpis = dlt.read("risk_kpis")
 
     return (
         kpis
