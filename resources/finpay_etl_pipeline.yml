@@ -13,7 +13,7 @@ resources:
       schema: default
 
       event_log:
-        name: finpay_event_log
+        name: finpay_event_log_${bundle.target}
         catalog: ${var.catalog}
         schema: observability
 

@@ -14,16 +14,15 @@ resources:
 
       tasks:
         - task_key: refresh_materialized_views
-          notebook_task:
-            notebook_path: /Workspace/Users/17100799@ue.edu.pe/notebooks/02_refresh_materialized_views
-            source: WORKSPACE
+          sql_task:
+            warehouse_id: ${var.warehouse_id}
+            file:
+              path: ../notebooks/02_refresh_materialized_views.sql
 
-      # Alerta solo en fallo
       email_notifications:
         on_failure:
           - 17100799@ue.edu.pe
 
-      # Schedule 30 minutos después del Job 1 (6:30am Lima)
       schedule:
         quartz_cron_expression: "0 30 6 * * ?"
         timezone_id: "America/Lima"

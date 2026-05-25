@@ -27,7 +27,7 @@ targets:
     workspace:
       host: https://dbc-705cf5fe-d80f.cloud.databricks.com
     variables:
-      catalog: fintech_finpay
+      catalog: fintech_finpay_dev
       schema: default
       pause_status: PAUSED
       warehouse_id: 3aabd4a7cb2f3361
