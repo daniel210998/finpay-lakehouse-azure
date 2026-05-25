@@ -1,0 +1,686 @@
+{
+  "datasets": [
+    {
+      "name": "flow_progress_by_table",
+      "displayName": "Flow Progress by Table",
+      "queryLines": [
+        "SELECT\n",
+        "  origin.flow_name AS tabla,\n",
+        "  CAST(\n",
+        "    get_json_object(details, '$.flow_progress.metrics.num_output_rows') AS DOUBLE\n",
+        "  ) AS registros_procesados,\n",
+        "  timestamp\n",
+        "FROM\n",
+        "  finpay_event_log_prod\n",
+        "WHERE\n",
+        "  event_type = 'flow_progress'\n",
+        "  AND origin.flow_name IS NOT NULL\n",
+        "  AND CAST(\n",
+        "    get_json_object(details, '$.flow_progress.metrics.num_output_rows') AS DOUBLE\n",
+        "  ) IS NOT NULL"
+      ],
+      "columns": [
+        {
+          "displayName": "tabla_corta",
+          "description": "Último segmento del nombre de tabla después del último punto",
+          "expression": "SUBSTRING_INDEX(`tabla`, '.', -1)"
+        }
+      ],
+      "catalog": "fintech_finpay",
+      "schema": "observability"
+    },
+    {
+      "name": "failed_quality_by_rule",
+      "displayName": "Registros fallidos por regla de calidad",
+      "config": {
+        "version": "1.1",
+        "source": "WITH base AS (\n  SELECT\n    origin.flow_name AS flow_name,\n    timestamp,\n    from_json(\n      get_json_object(details, '$.flow_progress.data_quality.expectations'),\n      'array<struct<name:string,dataset:string,passed_records:bigint,failed_records:bigint>>'\n    ) AS expectations\n  FROM fintech_finpay.observability.finpay_event_log_prod\n  WHERE event_type = 'flow_progress'\n    AND origin.flow_name IS NOT NULL\n    AND get_json_object(details, '$.flow_progress.data_quality.expectations') IS NOT NULL\n), exploded AS (\n  SELECT\n    flow_name,\n    timestamp,\n    expectation.name AS expectation_name,\n    expectation.failed_records AS failed_records\n  FROM base\n  LATERAL VIEW explode(expectations) e AS expectation\n) SELECT * FROM exploded WHERE expectation_name IS NOT NULL\n  AND failed_records > 0\n",
+        "dimensions": [
+          {
+            "name": "flow_name",
+            "expr": "flow_name"
+          },
+          {
+            "name": "expectation_name",
+            "expr": "expectation_name"
+          },
+          {
+            "name": "timestamp",
+            "expr": "timestamp"
+          }
+        ],
+        "measures": [
+          {
+            "name": "failed_records_total",
+            "expr": "SUM(failed_records)",
+            "displayName": "Registros fallidos"
+          }
+        ]
+      }
+    },
+    {
+      "name": "top5_daily_processed_vs_failed",
+      "displayName": "Top 5 flows - tendencia diaria",
+      "config": {
+        "version": "1.1",
+        "source": "WITH processed_rank AS (\n  SELECT\n    origin.flow_name AS flow_name,\n    SUM(CAST(get_json_object(details, '$.flow_progress.metrics.num_output_rows') AS DOUBLE)) AS total_procesados\n  FROM fintech_finpay.observability.finpay_event_log_prod\n  WHERE event_type = 'flow_progress'\n    AND origin.flow_name IS NOT NULL\n    AND CAST(get_json_object(details, '$.flow_progress.metrics.num_output_rows') AS DOUBLE) IS NOT NULL\n  GROUP BY origin.flow_name\n), top5 AS (\n  SELECT flow_name\n  FROM (\n    SELECT\n      flow_name,\n      ROW_NUMBER() OVER (ORDER BY total_procesados DESC) AS rn\n    FROM processed_rank\n  ) ranked\n  WHERE rn <= 5\n), processed AS (\n  SELECT\n    DATE_TRUNC('DAY', timestamp) AS fecha,\n    DATE_TRUNC('DAY', timestamp) AS timestamp,\n    origin.flow_name AS flow_name,\n    'Registros procesados' AS metrica,\n    SUM(CAST(get_json_object(details, '$.flow_progress.metrics.num_output_rows') AS DOUBLE)) AS valor\n  FROM fintech_finpay.observability.finpay_event_log_prod\n  WHERE event_type = 'flow_progress'\n    AND origin.flow_name IN (SELECT flow_name FROM top5)\n    AND CAST(get_json_object(details, '$.flow_progress.metrics.num_output_rows') AS DOUBLE) IS NOT NULL\n  GROUP BY DATE_TRUNC('DAY', timestamp), origin.flow_name\n), failed AS (\n  SELECT\n    DATE_TRUNC('DAY', timestamp) AS fecha,\n    DATE_TRUNC('DAY', timestamp) AS timestamp,\n    flow_name,\n    'Registros fallidos' AS metrica,\n    SUM(failed_records) AS valor\n  FROM (\n    SELECT\n      base.timestamp,\n      base.flow_name,\n      expectation.failed_records AS failed_records,\n      expectation.name AS expectation_name\n    FROM (\n      SELECT\n        timestamp,\n        origin.flow_name AS flow_name,\n        from_json(\n          get_json_object(details, '$.flow_progress.data_quality.expectations'),\n          'array<struct<name:string,dataset:string,passed_records:bigint,failed_records:bigint>>'\n        ) AS expectations\n      FROM fintech_finpay.observability.finpay_event_log_prod\n      WHERE event_type = 'flow_progress'\n        AND origin.flow_name IN (SELECT flow_name FROM top5)\n        AND get_json_object(details, '$.flow_progress.data_quality.expectations') IS NOT NULL\n    ) base\n    LATERAL VIEW explode(expectations) e AS expectation\n  ) q\n  WHERE expectation_name IS NOT NULL\n    AND failed_records > 0\n  GROUP BY DATE_TRUNC('DAY', timestamp), flow_name\n) SELECT fecha, timestamp, flow_name, metrica, valor FROM processed UNION ALL SELECT fecha, timestamp, flow_name, metrica, valor FROM failed\n",
+        "dimensions": [
+          {
+            "name": "timestamp",
+            "expr": "timestamp",
+            "displayName": "Fecha"
+          },
+          {
+            "name": "fecha",
+            "expr": "fecha",
+            "displayName": "Fecha"
+          },
+          {
+            "name": "flow_name",
+            "expr": "flow_name",
+            "displayName": "Flow"
+          },
+          {
+            "name": "metrica",
+            "expr": "metrica",
+            "displayName": "Métrica"
+          }
+        ],
+        "measures": [
+          {
+            "name": "valor_total",
+            "expr": "SUM(valor)",
+            "displayName": "Total"
+          }
+        ]
+      }
+    },
+    {
+      "name": "channel_reverse_rate",
+      "displayName": "Tasa de reversa por canal",
+      "config": {
+        "version": "1.1",
+        "source": "fintech_finpay.default.channel_summary",
+        "dimensions": [
+          {
+            "name": "fecha",
+            "expr": "fecha",
+            "displayName": "Fecha"
+          },
+          {
+            "name": "timestamp",
+            "expr": "CAST(fecha AS TIMESTAMP)",
+            "displayName": "Fecha"
+          },
+          {
+            "name": "channel",
+            "expr": "channel",
+            "displayName": "Canal"
+          }
+        ],
+        "measures": [
+          {
+            "name": "reverse_rate_avg",
+            "expr": "AVG(tasa_reversa)",
+            "displayName": "Tasa de reversa"
+          }
+        ]
+      }
+    }
+  ],
+  "pages": [
+    {
+      "name": "b46edf0d",
+      "displayName": "Observabilidad",
+      "layout": [
+        {
+          "widget": {
+            "name": "49abc2ab",
+            "queries": [
+              {
+                "name": "main_query",
+                "query": {
+                  "datasetName": "flow_progress_by_table",
+                  "fields": [
+                    {
+                      "name": "tabla",
+                      "expression": "`tabla`"
+                    },
+                    {
+                      "name": "max(timestamp)",
+                      "expression": "MAX(`timestamp`)"
+                    },
+                    {
+                      "name": "sum(registros_procesados)",
+                      "expression": "SUM(`registros_procesados`)"
+                    },
+                    {
+                      "name": "tabla_corta",
+                      "expression": "`tabla_corta`"
+                    }
+                  ],
+                  "disaggregated": false
+                }
+              }
+            ],
+            "spec": {
+              "version": 3,
+              "frame": {
+                "title": "Registros procesados por tabla",
+                "showTitle": true
+              },
+              "widgetType": "bar",
+              "encodings": {
+                "x": {
+                  "fieldName": "sum(registros_procesados)",
+                  "axis": {
+                    "title": "Registros procesados"
+                  },
+                  "scale": {
+                    "type": "quantitative"
+                  }
+                },
+                "y": {
+                  "fieldName": "tabla_corta",
+                  "axis": {
+                    "title": "Tabla"
+                  },
+                  "scale": {
+                    "type": "categorical",
+                    "sort": {
+                      "by": "x-reversed"
+                    }
+                  }
+                },
+                "label": {
+                  "show": false,
+                  "showTotal": true
+                },
+                "extra": [
+                  {
+                    "fieldName": "tabla",
+                    "displayName": "Tabla completa"
+                  },
+                  {
+                    "fieldName": "max(timestamp)",
+                    "format": {
+                      "type": "date-time",
+                      "date": "locale-number-month-full-year",
+                      "time": "none"
+                    },
+                    "displayName": "Última ejecución"
+                  }
+                ]
+              }
+            }
+          },
+          "position": {
+            "x": 0,
+            "y": 0,
+            "width": 6,
+            "height": 8
+          }
+        },
+        {
+          "widget": {
+            "name": "974071b2",
+            "queries": [
+              {
+                "name": "main_query",
+                "query": {
+                  "datasetName": "failed_quality_by_rule",
+                  "fields": [
+                    {
+                      "name": "flow_name",
+                      "expression": "`flow_name`"
+                    },
+                    {
+                      "name": "expectation_name",
+                      "expression": "`expectation_name`"
+                    },
+                    {
+                      "name": "measure(failed_records_total)",
+                      "expression": "MEASURE(`failed_records_total`)"
+                    }
+                  ],
+                  "disaggregated": false
+                }
+              }
+            ],
+            "spec": {
+              "version": 3,
+              "frame": {
+                "title": "Registros fallidos por regla de calidad",
+                "showTitle": true
+              },
+              "mark": {
+                "layout": "stack"
+              },
+              "widgetType": "bar",
+              "encodings": {
+                "x": {
+                  "fieldName": "measure(failed_records_total)",
+                  "axis": {
+                    "title": "Registros fallidos"
+                  },
+                  "scale": {
+                    "type": "quantitative"
+                  }
+                },
+                "y": {
+                  "fieldName": "expectation_name",
+                  "axis": {
+                    "title": "Regla de calidad"
+                  },
+                  "scale": {
+                    "type": "categorical",
+                    "sort": {
+                      "by": "x-reversed"
+                    }
+                  }
+                },
+                "color": {
+                  "fieldName": "flow_name",
+                  "legend": {
+                    "position": "right",
+                    "title": "Flow"
+                  },
+                  "scale": {
+                    "type": "categorical"
+                  }
+                },
+                "label": {
+                  "show": false,
+                  "showTotal": true
+                },
+                "extra": [
+                  {
+                    "fieldName": "flow_name",
+                    "displayName": "Flow"
+                  },
+                  {
+                    "fieldName": "expectation_name",
+                    "displayName": "Expectativa"
+                  }
+                ]
+              }
+            }
+          },
+          "position": {
+            "x": 6,
+            "y": 0,
+            "width": 6,
+            "height": 8
+          }
+        },
+        {
+          "widget": {
+            "name": "4f492199",
+            "queries": [
+              {
+                "name": "main_query",
+                "query": {
+                  "datasetName": "top5_daily_processed_vs_failed",
+                  "fields": [
+                    {
+                      "name": "flow_name",
+                      "expression": "`flow_name`"
+                    },
+                    {
+                      "name": "fecha",
+                      "expression": "`fecha`"
+                    },
+                    {
+                      "name": "metrica",
+                      "expression": "`metrica`"
+                    },
+                    {
+                      "name": "measure(valor_total)",
+                      "expression": "MEASURE(`valor_total`)"
+                    }
+                  ],
+                  "disaggregated": false
+                }
+              }
+            ],
+            "spec": {
+              "version": 3,
+              "frame": {
+                "title": "Top 5 flows - tendencia diaria",
+                "showTitle": true
+              },
+              "mark": {
+                "marker": {
+                  "shape": "circle"
+                }
+              },
+              "widgetType": "line",
+              "encodings": {
+                "x": {
+                  "fieldName": "fecha",
+                  "axis": {
+                    "title": "Fecha"
+                  },
+                  "format": {
+                    "type": "date",
+                    "date": "year-month-day"
+                  },
+                  "scale": {
+                    "type": "temporal"
+                  }
+                },
+                "y": {
+                  "fieldName": "measure(valor_total)",
+                  "axis": {
+                    "title": "Registros"
+                  },
+                  "scale": {
+                    "type": "quantitative"
+                  }
+                },
+                "color": {
+                  "fieldName": "flow_name",
+                  "legend": {
+                    "position": "right",
+                    "title": "Flow"
+                  },
+                  "scale": {
+                    "type": "categorical"
+                  }
+                },
+                "linePattern": {
+                  "fieldName": "metrica",
+                  "scale": {
+                    "type": "categorical"
+                  },
+                  "legend": {
+                    "position": "right",
+                    "title": "Métrica"
+                  }
+                },
+                "label": {
+                  "show": true,
+                  "display": {
+                    "type": "y-min-and-max"
+                  }
+                },
+                "extra": [
+                  {
+                    "fieldName": "fecha",
+                    "format": {
+                      "type": "date",
+                      "date": "year-month-day"
+                    },
+                    "displayName": "Fecha"
+                  },
+                  {
+                    "fieldName": "flow_name",
+                    "displayName": "Flow"
+                  },
+                  {
+                    "fieldName": "metrica",
+                    "displayName": "Métrica"
+                  },
+                  {
+                    "fieldName": "measure(valor_total)",
+                    "displayName": "Total"
+                  }
+                ]
+              }
+            }
+          },
+          "position": {
+            "x": 0,
+            "y": 8,
+            "width": 6,
+            "height": 10
+          }
+        },
+        {
+          "widget": {
+            "name": "afd1f81e",
+            "queries": [
+              {
+                "name": "main_query",
+                "query": {
+                  "datasetName": "channel_reverse_rate",
+                  "fields": [
+                    {
+                      "name": "channel",
+                      "expression": "`channel`"
+                    },
+                    {
+                      "name": "fecha",
+                      "expression": "`fecha`"
+                    },
+                    {
+                      "name": "measure(reverse_rate_avg)",
+                      "expression": "MEASURE(`reverse_rate_avg`)"
+                    }
+                  ],
+                  "filters": [
+                    {
+                      "expression": "`channel` IN ('web', 'app', 'pos')"
+                    }
+                  ],
+                  "disaggregated": false
+                }
+              }
+            ],
+            "spec": {
+              "version": 3,
+              "frame": {
+                "title": "Tasa de reversa por canal",
+                "showTitle": true
+              },
+              "mark": {
+                "layout": "group"
+              },
+              "widgetType": "bar",
+              "encodings": {
+                "x": {
+                  "fieldName": "fecha",
+                  "axis": {
+                    "title": "Fecha"
+                  },
+                  "format": {
+                    "type": "date",
+                    "date": "year-month-day"
+                  },
+                  "scale": {
+                    "type": "temporal"
+                  }
+                },
+                "y": {
+                  "fieldName": "measure(reverse_rate_avg)",
+                  "axis": {
+                    "title": "Tasa de reversa"
+                  },
+                  "format": {
+                    "type": "number-percent",
+                    "decimalPlaces": {
+                      "type": "exact",
+                      "places": 2
+                    }
+                  },
+                  "scale": {
+                    "type": "quantitative"
+                  }
+                },
+                "color": {
+                  "fieldName": "channel",
+                  "legend": {
+                    "position": "right",
+                    "title": "Canal"
+                  },
+                  "scale": {
+                    "type": "categorical"
+                  }
+                },
+                "label": {
+                  "show": true
+                },
+                "extra": [
+                  {
+                    "fieldName": "channel",
+                    "displayName": "Canal"
+                  },
+                  {
+                    "fieldName": "fecha",
+                    "format": {
+                      "type": "date",
+                      "date": "year-month-day"
+                    },
+                    "displayName": "Fecha"
+                  },
+                  {
+                    "fieldName": "measure(reverse_rate_avg)",
+                    "format": {
+                      "type": "number-percent",
+                      "decimalPlaces": {
+                        "type": "exact",
+                        "places": 2
+                      }
+                    },
+                    "displayName": "Tasa de reversa"
+                  }
+                ]
+              }
+            }
+          },
+          "position": {
+            "x": 6,
+            "y": 8,
+            "width": 6,
+            "height": 10
+          }
+        }
+      ],
+      "pageType": "PAGE_TYPE_CANVAS",
+      "layoutVersion": "GRID_V1"
+    },
+    {
+      "name": "global_filters",
+      "displayName": "Global Filters",
+      "layout": [
+        {
+          "widget": {
+            "name": "date_range_event_log",
+            "queries": [
+              {
+                "name": "dashboards/01f157eb23971ea79e84d0a52e2707b3/datasets/01f157ebc4de1fdf9e46eb35f213b1b7_timestamp",
+                "query": {
+                  "datasetName": "flow_progress_by_table",
+                  "fields": [
+                    {
+                      "name": "timestamp",
+                      "expression": "`timestamp`"
+                    },
+                    {
+                      "name": "timestamp_associativity",
+                      "expression": "COUNT_IF(`associative_filter_predicate_group`)"
+                    }
+                  ],
+                  "disaggregated": false
+                }
+              },
+              {
+                "name": "dashboards/01f157eb23971ea79e84d0a52e2707b3/datasets/01f157f0193e141bb7085f101cc89516_timestamp",
+                "query": {
+                  "datasetName": "failed_quality_by_rule",
+                  "fields": [
+                    {
+                      "name": "timestamp",
+                      "expression": "`timestamp`"
+                    },
+                    {
+                      "name": "timestamp_associativity",
+                      "expression": "COUNT_IF(`associative_filter_predicate_group`)"
+                    }
+                  ],
+                  "disaggregated": false
+                }
+              },
+              {
+                "name": "dashboards/01f157eb23971ea79e84d0a52e2707b3/datasets/01f157f475501c74a6633b0045b2ef3e_timestamp",
+                "query": {
+                  "datasetName": "top5_daily_processed_vs_failed",
+                  "fields": [
+                    {
+                      "name": "timestamp",
+                      "expression": "`timestamp`"
+                    },
+                    {
+                      "name": "timestamp_associativity",
+                      "expression": "COUNT_IF(`associative_filter_predicate_group`)"
+                    }
+                  ],
+                  "disaggregated": false
+                }
+              },
+              {
+                "name": "dashboards/01f157eb23971ea79e84d0a52e2707b3/datasets/01f157f586f8167f9bdd98ae4ffc6076_timestamp",
+                "query": {
+                  "datasetName": "channel_reverse_rate",
+                  "fields": [
+                    {
+                      "name": "timestamp",
+                      "expression": "`timestamp`"
+                    },
+                    {
+                      "name": "timestamp_associativity",
+                      "expression": "COUNT_IF(`associative_filter_predicate_group`)"
+                    }
+                  ],
+                  "disaggregated": false
+                }
+              }
+            ],
+            "spec": {
+              "version": 2,
+              "frame": {
+                "title": "Rango de fechas",
+                "showTitle": true
+              },
+              "widgetType": "filter-date-range-picker",
+              "encodings": {
+                "fields": [
+                  {
+                    "fieldName": "timestamp",
+                    "queryName": "dashboards/01f157eb23971ea79e84d0a52e2707b3/datasets/01f157ebc4de1fdf9e46eb35f213b1b7_timestamp"
+                  },
+                  {
+                    "fieldName": "timestamp",
+                    "queryName": "dashboards/01f157eb23971ea79e84d0a52e2707b3/datasets/01f157f0193e141bb7085f101cc89516_timestamp"
+                  },
+                  {
+                    "fieldName": "timestamp",
+                    "queryName": "dashboards/01f157eb23971ea79e84d0a52e2707b3/datasets/01f157f475501c74a6633b0045b2ef3e_timestamp"
+                  },
+                  {
+                    "fieldName": "timestamp",
+                    "queryName": "dashboards/01f157eb23971ea79e84d0a52e2707b3/datasets/01f157f586f8167f9bdd98ae4ffc6076_timestamp"
+                  }
+                ]
+              }
+            }
+          },
+          "position": {
+            "x": 0,
+            "y": 0,
+            "width": 4,
+            "height": 2
+          }
+        }
+      ],
+      "pageType": "PAGE_TYPE_GLOBAL_FILTERS",
+      "layoutVersion": "GRID_V1"
+    }
+  ],
+  "uiSettings": {
+    "theme": {
+      "widgetHeaderAlignment": "ALIGNMENT_UNSPECIFIED"
+    },
+    "applyModeEnabled": false
+  }
+}
