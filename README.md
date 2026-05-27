@@ -10,19 +10,23 @@ Este proyecto construye una plataforma de datos sobre Databricks que resuelve el
 
 El proyecto implementa la arquitectura Medallion completa con tres capas:
 
-- **Bronze**: ingesta raw de archivos fuente sin transformación, con columnas técnicas de auditoría (`_source_name`, `_ingestion_time`, `_file_path`)
-- **Silver**: limpieza, estandarización, deduplicación y enriquecimiento. Aplica reglas de calidad con `@dlt.expect` y persiste registros rechazados en tabla de cuarentena
-- **Gold**: KPIs de riesgo, tasas de reversa y detección de anomalías por comercio y canal
+- **Bronze**: ingesta raw de archivos fuente sin transformación, con columnas técnicas de auditoría (`_source_name`, `_ingestion_time`, `_file_path`). Usa Auto Loader (`cloudFiles`) para detección incremental de archivos nuevos.
+- **Silver**: limpieza, estandarización, deduplicación y enriquecimiento. Aplica reglas de calidad con `@dlt.expect` y `@dlt.expect_or_drop`. Los registros rechazados se persisten en la tabla de cuarentena `fintech_finpay.default.quarantine`.
+- **Gold**: KPIs de riesgo, tasas de reversa y detección de anomalías por comercio y canal.
 
-Todo el pipeline se implementa con Lakeflow Declarative Pipelines usando Streaming Tables con `trigger=availableNow`.
+Todo el pipeline se implementa con Lakeflow Declarative Pipelines usando Streaming Tables con `trigger=availableNow` — esto significa que el pipeline procesa todos los archivos disponibles en la landing zone y se detiene automáticamente al terminar (modo batch).
+
+Los event logs del pipeline están habilitados y persistidos en `fintech_finpay.observability.finpay_event_log_prod`, que es la fuente del dashboard de observabilidad.
 
 ## Estructura del repositorio
+
+```
 finpay-lakehouse-azure/
 ├── databricks.yml                          # Configuración raíz del DAB
 ├── resources/
 │   ├── finpay_etl_pipeline.yml             # Lakeflow Declarative Pipeline Bronze→Silver→Gold
 │   ├── finpay_ingestion_job.yml            # Job 1: orquesta el pipeline ETL
-│   ├── finpay_semantic_job.yml             # Job 2: refresca vistas materializadas
+│   ├── finpay_semantic_job.yml             # Job 2: refresca vistas materializadas en SQL Warehouse
 │   └── finpay_observability_dashboard.yml  # Dashboard AI/BI de observabilidad
 ├── src/
 │   ├── utils.py                            # Funciones reutilizables compartidas
@@ -31,12 +35,13 @@ finpay-lakehouse-azure/
 │   └── gold.py                             # Lógica de agregación Gold
 ├── notebooks/
 │   ├── 00_setup.ipynb                      # Aprovisionamiento inicial (ejecutar una vez)
-│   ├── 01_create_materialized_views.ipynb  # Modelo dimensional (ejecutar una vez)
-│   ├── 02_refresh_materialized_views.sql   # Refresco de vistas materializadas
-│   └── 03_observability_queries.ipynb      # Consultas de validación sobre event logs
+│   ├── 01_create_materialized_views.ipynb  # Modelo dimensional (ejecutar una vez desde SQL Warehouse)
+│   ├── 02_refresh_materialized_views.sql   # Refresco de vistas materializadas (ejecutado por Job 2)
+│   └── 03_observability_queries.ipynb      # Consultas de validación sobre event logs de observability
 ├── dashboard/
 │   └── observability.lvdash.json          # Dashboard AI/BI exportado
 └── README.md
+```
 
 ## Unity Catalog
 
@@ -44,6 +49,7 @@ finpay-lakehouse-azure/
 - **Catálogo desarrollo**: `fintech_finpay_dev`
 - **Schemas**: `default`, `bronze`, `silver`, `gold`, `observability`
 - **Landing zone**: `/Volumes/fintech_finpay/default/vol_landing/`
+- **Event logs**: `fintech_finpay.observability.finpay_event_log_prod`
 
 ### Roles y permisos
 
@@ -53,7 +59,7 @@ finpay-lakehouse-azure/
 | riesgo | USE CATALOG, USE SCHEMA, SELECT en silver y gold |
 | auditoria | USE CATALOG, USE SCHEMA, SELECT en gold y observability |
 
-Column masking y Row-Level Security aplicados en `silver.users` sobre campos PII (`full_name`, `document_id`, `email`, `phone`).
+Column masking y Row-Level Security aplicados en `silver.users` sobre campos PII (`full_name`, `document_id`, `email`, `phone`). Solo el rol `ingenieria` ve los valores reales.
 
 ## Instrucciones de despliegue
 
@@ -63,6 +69,7 @@ Column masking y Row-Level Security aplicados en `silver.users` sobre campos PII
 - Git 2.54+
 - Databricks CLI v0.299+
 - VS Code con extensión Databricks
+- SQL Warehouse activo en el workspace (necesario para el modelo dimensional y Job 2)
 
 ### Paso 1 — Clonar el repositorio
 
@@ -116,18 +123,30 @@ databricks bundle run finpay_semantic_job --target prod
 
 ### Paso 7 — Crear el modelo dimensional
 
-Ejecutar `notebooks/01_create_materialized_views.ipynb` una sola vez desde un SQL Warehouse para crear las vistas materializadas del modelo dimensional.
+Ejecutar `notebooks/01_create_materialized_views.ipynb` una sola vez desde un SQL Warehouse para crear las 5 vistas materializadas del modelo dimensional (`fact_transactions`, `dim_merchant`, `dim_user`, `dim_channel`, `dim_date`). Este notebook debe ejecutarse antes de correr Job 2 por primera vez.
+
+### Paso 8 — Validar event logs y observabilidad
+
+Ejecutar `notebooks/03_observability_queries.ipynb` para validar los event logs del pipeline en `fintech_finpay.observability`. Contiene consultas para verificar registros procesados por capa, registros fallidos por expectativa de calidad e historial de ejecuciones.
 
 ## Retos técnicos implementados
 
 ### Reto 1 — Metadata-driven con arquetipos de ingesta
 
-El pipeline lee `ingestion_archetypes.json` desde `vol_landing/metadata/` al inicio y orquesta dinámicamente cada ingesta según las propiedades del arquetipo. Ninguna propiedad de las fuentes está hardcodeada en el código. Si se agrega una nueva fuente al JSON con `active: true`, el pipeline la procesa automáticamente.
+El pipeline lee `ingestion_archetypes.json` desde `vol_landing/metadata/` al inicio del módulo `bronze.py`. La función `ingest_source()` recibe el arquetipo de cada fuente y configura dinámicamente el formato, delimitador, header, ruta y schema_location sin ningún valor hardcodeado en el código.
+
+Si se agrega una nueva fuente al JSON con `active: true`, el pipeline la procesa automáticamente sin modificar ni redesplegar el código. El campo `active: false` permite desactivar una fuente sin eliminarla del catálogo.
 
 ### Reto 2 — Tabla de cuarentena
 
-Los registros que no superan las reglas de calidad críticas en Silver se persisten en `silver.quarantine` con:
-- `_source_name`: fuente de origen
-- `_reject_reason`: motivo del rechazo
+Los registros que no superan las reglas de calidad críticas en Silver se persisten en `fintech_finpay.default.quarantine` con:
+- `_source_name`: fuente de origen (transactions, merchants, users)
+- `_reject_reason`: motivo del rechazo (campo crítico nulo, monto inválido, etc.)
 - `_processed_at`: timestamp del procesamiento
 - `_raw_record`: contenido original del registro como STRING JSON para trazabilidad completa
+
+Esto permite al equipo de ingeniería auditar los rechazos, corregir los datos en la fuente y reprocesarlos sin perder información.
+
+## Entregable opcional
+
+Delta Sharing sobre las tablas Gold para exponer datos al equipo de auditoría en una cuenta Databricks externa no fue implementado en esta entrega.
