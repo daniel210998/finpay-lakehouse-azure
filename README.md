@@ -6,6 +6,10 @@ FinPay es una fintech latinoamericana que procesa pagos digitales entre comercio
 
 Este proyecto construye una plataforma de datos sobre Databricks que resuelve el problema de visibilidad sobre patrones de fraude mediante un pipeline automatizado de ingesta, procesamiento y publicación analítica, con un modelo dimensional que permite al área de riesgo detectar patrones de fraude en tiempo casi real.
 
+## Diagrama de arquitectura
+
+![Arquitectura FinPay Lakehouse](./assets/architecture-diagram.svg)
+
 ## Arquitectura
 
 El proyecto implementa la arquitectura Medallion completa con tres capas:
@@ -17,6 +21,15 @@ El proyecto implementa la arquitectura Medallion completa con tres capas:
 Todo el pipeline se implementa con Lakeflow Declarative Pipelines usando Streaming Tables con `trigger=availableNow` — esto significa que el pipeline procesa todos los archivos disponibles en la landing zone y se detiene automáticamente al terminar (modo batch).
 
 Los event logs del pipeline están habilitados y persistidos en `fintech_finpay.observability.finpay_event_log_prod`, que es la fuente del dashboard de observabilidad.
+
+## Impacto
+
+> ⏳ **Pendiente de medición.** Esta sección se completa corriendo el pipeline contra un dataset real (PaySim, Kaggle `ealaxi/paysim1`) y midiendo directamente de las tablas — no son cifras estimadas.
+
+- Total de transacciones procesadas en el pipeline end-to-end: `TBD`
+- % de registros rechazados y trazados en la tabla de cuarentena: `TBD`
+- Tasa de detección de fraude, validada contra las etiquetas reales (`isFraud`) de PaySim: `TBD`
+- Tiempo total de procesamiento, de datos crudos a listos para negocio: `TBD`
 
 ## Estructura del repositorio
 
@@ -150,3 +163,12 @@ Esto permite al equipo de ingeniería auditar los rechazos, corregir los datos e
 ## Entregable opcional
 
 Delta Sharing sobre las tablas Gold para exponer datos al equipo de auditoría en una cuenta Databricks externa no fue implementado en esta entrega.
+
+---
+
+## 📎 Documentación del proyecto
+
+Este repositorio también documenta el proceso de validación como potencial producto/negocio, siguiendo una metodología Lean Startup:
+
+- [`docs/00-foundation/`](./docs/00-foundation/) — marco de documentación del proyecto
+- [`docs/01-discovery/`](./docs/01-discovery/) — hipótesis de negocio y documento de descubrimiento
