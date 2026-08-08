@@ -1,0 +1,171 @@
+<svg viewBox="0 0 1500 1180" xmlns="http://www.w3.org/2000/svg" font-family="Segoe UI, Helvetica, Arial, sans-serif">
+
+  <defs>
+    <marker id="arrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+      <path d="M 0 0 L 10 5 L 0 10 z" fill="#64748B"/>
+    </marker>
+    <marker id="arrowDash" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse">
+      <path d="M 0 0 L 10 5 L 0 10 z" fill="#8B5CF6"/>
+    </marker>
+    <filter id="softShadow" x="-20%" y="-20%" width="140%" height="140%">
+      <feDropShadow dx="0" dy="2" stdDeviation="4" flood-color="#0F172A" flood-opacity="0.10"/>
+    </filter>
+  </defs>
+
+  <rect width="1500" height="1180" fill="#F8FAFC"/>
+
+  <!-- TITLE -->
+  <text x="60" y="55" font-size="26" font-weight="700" fill="#0F172A">FinPay Lakehouse — Arquitectura</text>
+  <text x="60" y="80" font-size="14" fill="#64748B">Pipeline Medallion en Azure Databricks · Lakeflow Declarative Pipelines · Unity Catalog</text>
+
+  <!-- LANDING ZONE -->
+  <text x="60" y="130" font-size="12" font-weight="700" fill="#64748B" letter-spacing="1.5">01 · LANDING ZONE — VOLUMES</text>
+  <g filter="url(#softShadow)">
+    <rect x="60" y="145" width="1000" height="80" rx="12" fill="#FFFFFF" stroke="#E2E8F0" stroke-width="1.5"/>
+  </g>
+  <g font-size="12.5" fill="#334155">
+    <rect x="85" y="170" width="200" height="34" rx="8" fill="#F1F5F9"/>
+    <text x="185" y="191" text-anchor="middle" font-family="Consolas, monospace">transactions_*.csv</text>
+
+    <rect x="300" y="170" width="180" height="34" rx="8" fill="#F1F5F9"/>
+    <text x="390" y="191" text-anchor="middle" font-family="Consolas, monospace">merchants.json</text>
+
+    <rect x="495" y="170" width="160" height="34" rx="8" fill="#F1F5F9"/>
+    <text x="575" y="191" text-anchor="middle" font-family="Consolas, monospace">users_*.txt</text>
+
+    <rect x="670" y="170" width="330" height="34" rx="8" fill="#EEF2FF"/>
+    <text x="835" y="191" text-anchor="middle" font-family="Consolas, monospace" fill="#4338CA">ingestion_archetypes.json</text>
+  </g>
+
+  <line x1="560" y1="225" x2="560" y2="260" stroke="#64748B" stroke-width="2" marker-end="url(#arrow)"/>
+
+  <!-- BRONZE -->
+  <text x="60" y="290" font-size="12" font-weight="700" fill="#92400E" letter-spacing="1.5">02 · BRONZE — fintech_finpay.bronze</text>
+  <g filter="url(#softShadow)">
+    <rect x="60" y="305" width="1000" height="95" rx="12" fill="#FFFBEB" stroke="#FDE68A" stroke-width="1.5"/>
+  </g>
+  <text x="90" y="340" font-size="15" font-weight="600" fill="#92400E">Auto Loader (cloudFiles)</text>
+  <text x="90" y="362" font-size="12.5" fill="#78716C">ingest_source() lee ingestion_archetypes.json — formato, delimitador y ruta 100% metadata-driven</text>
+  <rect x="700" y="325" width="330" height="55" rx="8" fill="#FFFFFF" stroke="#FDE68A" stroke-width="1"/>
+  <text x="865" y="347" text-anchor="middle" font-size="12" font-weight="600" fill="#92400E">Tablas raw +</text>
+  <text x="865" y="365" text-anchor="middle" font-size="11" fill="#78716C" font-family="Consolas, monospace">_source_name · _ingestion_time · _file_path</text>
+
+  <line x1="560" y1="400" x2="560" y2="435" stroke="#64748B" stroke-width="2" marker-end="url(#arrow)"/>
+
+  <!-- SILVER -->
+  <text x="60" y="465" font-size="12" font-weight="700" fill="#475569" letter-spacing="1.5">03 · SILVER — fintech_finpay.silver</text>
+  <g filter="url(#softShadow)">
+    <rect x="60" y="480" width="1000" height="95" rx="12" fill="#F8FAFC" stroke="#CBD5E1" stroke-width="1.5"/>
+  </g>
+  <text x="90" y="515" font-size="15" font-weight="600" fill="#334155">Limpieza · Deduplicación · Enriquecimiento</text>
+  <text x="90" y="537" font-size="12.5" fill="#64748B" font-family="Consolas, monospace">@dlt.expect · @dlt.expect_or_drop</text>
+
+  <!-- Quarantine branch -->
+  <line x1="900" y1="527" x2="1130" y2="527" stroke="#DC2626" stroke-width="2" stroke-dasharray="5,4" marker-end="url(#arrow)"/>
+  <g filter="url(#softShadow)">
+    <rect x="1135" y="480" width="270" height="95" rx="12" fill="#FEF2F2" stroke="#FCA5A5" stroke-width="1.5"/>
+  </g>
+  <text x="1160" y="510" font-size="13.5" font-weight="700" fill="#B91C1C">⚠ quarantine</text>
+  <text x="1160" y="530" font-size="11" fill="#991B1B" font-family="Consolas, monospace">fintech_finpay.default</text>
+  <text x="1160" y="550" font-size="11" fill="#7F1D1D">registros rechazados + motivo</text>
+  <text x="1160" y="565" font-size="11" fill="#7F1D1D">+ _raw_record trazable</text>
+
+  <line x1="560" y1="575" x2="560" y2="610" stroke="#64748B" stroke-width="2" marker-end="url(#arrow)"/>
+
+  <!-- GOLD -->
+  <text x="60" y="640" font-size="12" font-weight="700" fill="#854D0E" letter-spacing="1.5">04 · GOLD — fintech_finpay.gold</text>
+  <g filter="url(#softShadow)">
+    <rect x="60" y="655" width="1000" height="95" rx="12" fill="#FEFCE8" stroke="#FDE047" stroke-width="1.5"/>
+  </g>
+  <text x="90" y="690" font-size="15" font-weight="600" fill="#854D0E">KPIs de riesgo · Tasas de reversa</text>
+  <text x="90" y="712" font-size="12.5" fill="#78716C">Detección de anomalías por comercio y canal</text>
+
+  <line x1="560" y1="750" x2="560" y2="785" stroke="#64748B" stroke-width="2" marker-end="url(#arrow)"/>
+
+  <!-- SEMANTIC + OBSERVABILITY row -->
+  <text x="60" y="815" font-size="12" font-weight="700" fill="#1E3A5F" letter-spacing="1.5">05 · MODELO DIMENSIONAL</text>
+  <g filter="url(#softShadow)">
+    <rect x="60" y="830" width="480" height="100" rx="12" fill="#EFF6FF" stroke="#BFDBFE" stroke-width="1.5"/>
+  </g>
+  <rect x="90" y="855" width="180" height="45" rx="8" fill="#FFFFFF" stroke="#BFDBFE"/>
+  <text x="180" y="882" text-anchor="middle" font-size="12" font-weight="600" fill="#1E40AF" font-family="Consolas, monospace">fact_transactions</text>
+  <rect x="290" y="855" width="230" height="45" rx="8" fill="#FFFFFF" stroke="#BFDBFE"/>
+  <text x="405" y="875" text-anchor="middle" font-size="11" fill="#1E40AF" font-family="Consolas, monospace">dim_merchant · dim_user</text>
+  <text x="405" y="890" text-anchor="middle" font-size="11" fill="#1E40AF" font-family="Consolas, monospace">dim_channel · dim_date</text>
+
+  <text x="580" y="815" font-size="12" font-weight="700" fill="#3730A3" letter-spacing="1.5">06 · OBSERVABILIDAD</text>
+  <g filter="url(#softShadow)">
+    <rect x="580" y="830" width="480" height="100" rx="12" fill="#F5F3FF" stroke="#DDD6FE" stroke-width="1.5"/>
+  </g>
+  <rect x="610" y="855" width="200" height="45" rx="8" fill="#FFFFFF" stroke="#DDD6FE"/>
+  <text x="710" y="882" text-anchor="middle" font-size="11.5" font-weight="600" fill="#5B21B6" font-family="Consolas, monospace">finpay_event_log_prod</text>
+  <line x1="815" y1="877" x2="855" y2="877" stroke="#8B5CF6" stroke-width="2" marker-end="url(#arrow)"/>
+  <rect x="860" y="855" width="180" height="45" rx="8" fill="#FFFFFF" stroke="#DDD6FE"/>
+  <text x="950" y="882" text-anchor="middle" font-size="12" font-weight="600" fill="#5B21B6">Dashboard AI/BI</text>
+
+  <!-- dashed event lines from each layer to event log -->
+  <path d="M 1060 380 C 1150 500, 1150 700, 900 850" fill="none" stroke="#C4B5FD" stroke-width="1.5" stroke-dasharray="4,4"/>
+  <path d="M 1060 552 C 1130 650, 1100 750, 900 855" fill="none" stroke="#C4B5FD" stroke-width="1.5" stroke-dasharray="4,4"/>
+  <path d="M 1060 700 C 1080 750, 1000 800, 900 858" fill="none" stroke="#C4B5FD" stroke-width="1.5" stroke-dasharray="4,4"/>
+
+  <!-- GOVERNANCE PANEL -->
+  <g filter="url(#softShadow)">
+    <rect x="1135" y="145" width="270" height="605" rx="12" fill="#FAF5FF" stroke="#D8B4FE" stroke-width="1.5" stroke-dasharray="0"/>
+  </g>
+  <text x="1160" y="180" font-size="13.5" font-weight="700" fill="#6B21A8">🔐 Unity Catalog</text>
+  <text x="1160" y="198" font-size="11" fill="#7E22CE">Gobernanza transversal</text>
+
+  <line x1="1160" y1="215" x2="1380" y2="215" stroke="#E9D5FF" stroke-width="1"/>
+
+  <text x="1160" y="240" font-size="11.5" font-weight="600" fill="#581C87">ingenieria</text>
+  <text x="1160" y="256" font-size="10.5" fill="#7E22CE">acceso total, todos los schemas</text>
+
+  <text x="1160" y="285" font-size="11.5" font-weight="600" fill="#581C87">riesgo</text>
+  <text x="1160" y="301" font-size="10.5" fill="#7E22CE">SELECT en silver + gold</text>
+
+  <text x="1160" y="330" font-size="11.5" font-weight="600" fill="#581C87">auditoria</text>
+  <text x="1160" y="346" font-size="10.5" fill="#7E22CE">SELECT en gold + observability</text>
+
+  <line x1="1160" y1="370" x2="1380" y2="370" stroke="#E9D5FF" stroke-width="1"/>
+
+  <text x="1160" y="395" font-size="11.5" font-weight="600" fill="#581C87">Masking + RLS</text>
+  <text x="1160" y="412" font-size="10.5" fill="#7E22CE">silver.users:</text>
+  <text x="1160" y="427" font-size="10.5" fill="#7E22CE" font-family="Consolas, monospace">full_name, document_id,</text>
+  <text x="1160" y="441" font-size="10.5" fill="#7E22CE" font-family="Consolas, monospace">email, phone</text>
+
+  <!-- dashed governance connectors down the side -->
+  <line x1="1135" y1="352" x2="1060" y2="352" stroke="#C4B5FD" stroke-width="1.5" stroke-dasharray="4,4" marker-end="url(#arrowDash)"/>
+  <line x1="1135" y1="527" x2="1060" y2="527" stroke="#C4B5FD" stroke-width="1.5" stroke-dasharray="4,4" marker-end="url(#arrowDash)"/>
+  <line x1="1135" y1="702" x2="1060" y2="702" stroke="#C4B5FD" stroke-width="1.5" stroke-dasharray="4,4" marker-end="url(#arrowDash)"/>
+
+  <!-- LEGEND -->
+  <g transform="translate(60, 970)">
+    <rect x="0" y="0" width="1345" height="150" rx="12" fill="#FFFFFF" stroke="#E2E8F0" stroke-width="1.5"/>
+    <text x="24" y="30" font-size="12" font-weight="700" fill="#334155" letter-spacing="1">LEYENDA</text>
+
+    <line x1="24" y1="55" x2="54" y2="55" stroke="#64748B" stroke-width="2" marker-end="url(#arrow)"/>
+    <text x="64" y="59" font-size="11.5" fill="#475569">Flujo de datos principal</text>
+
+    <line x1="260" y1="55" x2="290" y2="55" stroke="#DC2626" stroke-width="2" stroke-dasharray="5,4" marker-end="url(#arrow)"/>
+    <text x="300" y="59" font-size="11.5" fill="#475569">Registros rechazados (cuarentena)</text>
+
+    <line x1="580" y1="55" x2="610" y2="55" stroke="#C4B5FD" stroke-width="1.5" stroke-dasharray="4,4" marker-end="url(#arrowDash)"/>
+    <text x="620" y="59" font-size="11.5" fill="#475569">Eventos / gobernanza (transversal)</text>
+
+    <rect x="24" y="85" width="16" height="16" rx="4" fill="#FFFBEB" stroke="#FDE68A"/>
+    <text x="48" y="98" font-size="11.5" fill="#475569">Bronze</text>
+    <rect x="140" y="85" width="16" height="16" rx="4" fill="#F8FAFC" stroke="#CBD5E1"/>
+    <text x="164" y="98" font-size="11.5" fill="#475569">Silver</text>
+    <rect x="250" y="85" width="16" height="16" rx="4" fill="#FEFCE8" stroke="#FDE047"/>
+    <text x="274" y="98" font-size="11.5" fill="#475569">Gold</text>
+    <rect x="340" y="85" width="16" height="16" rx="4" fill="#EFF6FF" stroke="#BFDBFE"/>
+    <text x="364" y="98" font-size="11.5" fill="#475569">Modelo dimensional</text>
+    <rect x="530" y="85" width="16" height="16" rx="4" fill="#F5F3FF" stroke="#DDD6FE"/>
+    <text x="554" y="98" font-size="11.5" fill="#475569">Observabilidad</text>
+    <rect x="700" y="85" width="16" height="16" rx="4" fill="#FAF5FF" stroke="#D8B4FE"/>
+    <text x="724" y="98" font-size="11.5" fill="#475569">Unity Catalog (gobernanza)</text>
+
+    <text x="24" y="128" font-size="11" fill="#94A3B8">Ejecución en modo batch — Lakeflow Declarative Pipelines con trigger=availableNow</text>
+  </g>
+
+</svg>
